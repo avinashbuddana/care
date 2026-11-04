@@ -1,0 +1,107 @@
+name: powerbridge
+x-app: &app
+  build:
+    context: .
+    dockerfile: infra/docker/Dockerfile
+  env_file: .env
+  environment: &app-env
+    DATABASE_URL: postgresql://platform:${POSTGRES_PASSWORD}@postgres:5432/platform
+    REDIS_URL: redis://redis:6379
+    STORAGE_ROOT: /data/uploads
+    NODE_ENV: development
+  volumes:
+    - uploads:/data/uploads
+  init: true
+services:
+  postgres:
+    image: postgres:16.11-bookworm
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: platform
+      REPORTING_PASSWORD: ${REPORTING_PASSWORD:?set REPORTING_PASSWORD}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:?set SUPERSET_DB_PASSWORD}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./infra/docker/postgres-init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+    ports: ["127.0.0.1:5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform -d platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7.4.7-bookworm
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes: ["redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  migrate:
+    <<: *app
+    command: ["pnpm", "--filter", "@platform/api", "migration:run:prod"]
+    depends_on:
+      postgres: { condition: service_healthy }
+  api:
+    <<: *app
+    command: ["pnpm", "--filter", "@platform/api", "start"]
+    ports: ["127.0.0.1:3001:3001"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+  worker:
+    <<: *app
+    command: ["pnpm", "--filter", "@platform/worker", "start"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+  web:
+    <<: *app
+    command: ["pnpm", "--filter", "@platform/web", "start"]
+    environment:
+      <<: *app-env
+      API_URL: http://api:3001
+      NODE_ENV: production
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [api]
+  superset-init:
+    profiles: [analytics]
+    build: ./infra/superset
+    env_file: .env
+    environment: &superset-env
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+      SUPERSET_METADATA_URL: postgresql+psycopg2://superset_meta:${SUPERSET_DB_PASSWORD}@postgres:5432/superset
+      REPORTING_DATABASE_URI: postgresql+psycopg2://reporting_reader:${REPORTING_PASSWORD}@postgres:5432/platform
+    command: ["/bin/sh", "/app/bootstrap/init.sh"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+  superset:
+    profiles: [analytics]
+    build: ./infra/superset
+    env_file: .env
+    environment: *superset-env
+    ports: ["127.0.0.1:8088:8088"]
+    depends_on:
+      superset-init: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  superset-register:
+    # One-shot: registers the read-only reporting DB, approved views and SYNTHETIC example charts via REST API.
+    profiles: [analytics]
+    build: ./infra/superset
+    env_file: .env
+    environment:
+      <<: *superset-env
+      SUPERSET_INTERNAL_URL: http://superset:8088
+    command: ["python", "/app/bootstrap/register.py"]
+    depends_on:
+      superset: { condition: service_healthy }
+volumes:
+  postgres:
+  redis:
+  uploads:

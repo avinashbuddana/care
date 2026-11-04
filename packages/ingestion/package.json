@@ -1,0 +1,27 @@
+{
+  "name": "@platform/ingestion",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --runInBand --passWithNoTests",
+    "benchmark": "tsx src/benchmark.ts"
+  },
+  "dependencies": {
+    "@platform/contracts": "workspace:*",
+    "csv-parse": "6.1.0",
+    "pg": "8.17.2",
+    "pg-copy-streams": "7.0.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "jest": "30.2.0",
+    "ts-jest": "29.4.6",
+    "@types/jest": "30.0.0",
+    "@types/pg": "8.16.0",
+    "@types/pg-copy-streams": "1.2.5"
+  }
+}

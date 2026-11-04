@@ -1,0 +1,11 @@
+Staff ID,First Name,Last Name,Department Code,Role,Hire Date,Weekly Hours,Active
+00101,Asha,Rao,D001,Nurse,2021-03-15,40,true
+00102,Liam,Chen,D002,Physician,2019-07-01,48,true
+00103,Maya,Singh,D003,Technician,2022-11-20,36,true
+00104,Noah,Patel,D004,Nurse,2020-01-06,40,false
+00105,Zara,Khan,D005,Physician,2018-05-14,44,true
+00106,Omar,Diaz,D006,Therapist,2023-02-27,32,true
+00107,Ivy,Nguyen,D007,Physician,2017-09-10,50,true
+00108,Ravi,Kumar,D008,Pharmacist,2024-06-03,40,true
+00109,Elena,Rossi,D001,Nurse,2025-01-13,24,true
+00110,Sam,Okafor,D002,Paramedic,2022-08-08,40,true

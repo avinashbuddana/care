@@ -1,0 +1,36 @@
+{
+  "name": "@platform/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 0.0.0.0",
+    "build": "next build",
+    "start": "next start --hostname 0.0.0.0",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@platform/contracts": "workspace:*",
+    "next": "16.4.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "@tanstack/react-query": "5.90.20",
+    "@tanstack/react-table": "8.21.3",
+    "react-hook-form": "7.71.1",
+    "@hookform/resolvers": "3.10.0",
+    "zod": "3.25.76",
+    "lucide-react": "0.563.0",
+    "@radix-ui/react-slot": "1.2.4",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "tailwind-merge": "3.4.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.9",
+    "@types/react-dom": "19.2.3",
+    "@playwright/test": "1.58.1",
+    "tailwindcss": "4.1.18",
+    "@tailwindcss/postcss": "4.1.18"
+  }
+}

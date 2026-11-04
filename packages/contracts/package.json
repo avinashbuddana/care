@@ -1,0 +1,20 @@
+{
+  "name": "@platform/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --runInBand --passWithNoTests"
+  },
+  "dependencies": {
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "jest": "30.2.0",
+    "ts-jest": "29.4.6",
+    "@types/jest": "30.0.0"
+  }
+}
