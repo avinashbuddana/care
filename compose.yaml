@@ -1,39 +1,33 @@
 name: powerbridge
+# PostgreSQL is external: DATABASE_URL, SUPERSET_METADATA_URL and REPORTING_DATABASE_URI come from .env.
+# A database on this same machine is reachable from containers as host.docker.internal.
 x-app: &app
   build:
     context: .
     dockerfile: infra/docker/Dockerfile
+  image: powerbridge-app
   env_file: .env
   environment: &app-env
-    DATABASE_URL: postgresql://platform:${POSTGRES_PASSWORD}@postgres:5432/platform
     REDIS_URL: redis://redis:6379
     STORAGE_ROOT: /data/uploads
-    NODE_ENV: development
   volumes:
     - uploads:/data/uploads
+  extra_hosts: ["host.docker.internal:host-gateway"]
   init: true
+  restart: unless-stopped
+x-superset: &superset
+  build: ./infra/superset
+  image: powerbridge-superset
+  env_file: .env
+  environment: &superset-env
+    SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+  extra_hosts: ["host.docker.internal:host-gateway"]
 services:
-  postgres:
-    image: postgres:16.11-bookworm
-    environment:
-      POSTGRES_USER: platform
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-      POSTGRES_DB: platform
-      REPORTING_PASSWORD: ${REPORTING_PASSWORD:?set REPORTING_PASSWORD}
-      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:?set SUPERSET_DB_PASSWORD}
-    volumes:
-      - postgres:/var/lib/postgresql/data
-      - ./infra/docker/postgres-init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
-    ports: ["127.0.0.1:5432:5432"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U platform -d platform"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
   redis:
     image: redis:7.4.7-bookworm
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
     volumes: ["redis:/data"]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -41,15 +35,21 @@ services:
       retries: 20
   migrate:
     <<: *app
+    restart: "no"
     command: ["pnpm", "--filter", "@platform/api", "migration:run:prod"]
+  seed:
+    # Creates ADMIN_EMAIL as admin if missing; safe to re-run.
+    <<: *app
+    restart: "no"
+    command: ["node", "apps/api/dist/database/seed.js"]
     depends_on:
-      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
   api:
     <<: *app
     command: ["pnpm", "--filter", "@platform/api", "start"]
-    ports: ["127.0.0.1:3001:3001"]
+    ports: ["${BIND_ADDR:-127.0.0.1}:3001:3001"]
     depends_on:
-      migrate: { condition: service_completed_successfully }
+      seed: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
   worker:
     <<: *app
@@ -64,25 +64,17 @@ services:
       <<: *app-env
       API_URL: http://api:3001
       NODE_ENV: production
-    ports: ["127.0.0.1:3000:3000"]
+    ports: ["${BIND_ADDR:-127.0.0.1}:3000:3000"]
     depends_on: [api]
   superset-init:
-    profiles: [analytics]
-    build: ./infra/superset
-    env_file: .env
-    environment: &superset-env
-      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
-      SUPERSET_METADATA_URL: postgresql+psycopg2://superset_meta:${SUPERSET_DB_PASSWORD}@postgres:5432/superset
-      REPORTING_DATABASE_URI: postgresql+psycopg2://reporting_reader:${REPORTING_PASSWORD}@postgres:5432/platform
+    <<: *superset
     command: ["/bin/sh", "/app/bootstrap/init.sh"]
     depends_on:
       migrate: { condition: service_completed_successfully }
   superset:
-    profiles: [analytics]
-    build: ./infra/superset
-    env_file: .env
-    environment: *superset-env
-    ports: ["127.0.0.1:8088:8088"]
+    <<: *superset
+    ports: ["${BIND_ADDR:-127.0.0.1}:8088:8088"]
+    restart: unless-stopped
     depends_on:
       superset-init: { condition: service_completed_successfully }
     healthcheck:
@@ -92,9 +84,7 @@ services:
       retries: 30
   superset-register:
     # One-shot: registers the read-only reporting DB, approved views and SYNTHETIC example charts via REST API.
-    profiles: [analytics]
-    build: ./infra/superset
-    env_file: .env
+    <<: *superset
     environment:
       <<: *superset-env
       SUPERSET_INTERNAL_URL: http://superset:8088
@@ -102,6 +92,5 @@ services:
     depends_on:
       superset: { condition: service_healthy }
 volumes:
-  postgres:
   redis:
   uploads:
