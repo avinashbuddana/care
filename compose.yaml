@@ -8,6 +8,8 @@ x-app: &app
   image: powerbridge-app
   env_file: .env
   environment: &app-env
+    # Container ports are fixed; choose host ports with API_PORT / WEB_PORT / SUPERSET_PORT.
+    PORT: "3001"
     REDIS_URL: redis://redis:6379
     STORAGE_ROOT: /data/uploads
   volumes:
@@ -47,7 +49,7 @@ services:
   api:
     <<: *app
     command: ["pnpm", "--filter", "@platform/api", "start"]
-    ports: ["${BIND_ADDR:-127.0.0.1}:3001:3001"]
+    ports: ["${BIND_ADDR:-127.0.0.1}:${API_PORT:-3001}:3001"]
     depends_on:
       seed: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -62,9 +64,10 @@ services:
     command: ["pnpm", "--filter", "@platform/web", "start"]
     environment:
       <<: *app-env
+      PORT: "3000"
       API_URL: http://api:3001
       NODE_ENV: production
-    ports: ["${BIND_ADDR:-127.0.0.1}:3000:3000"]
+    ports: ["${BIND_ADDR:-127.0.0.1}:${WEB_PORT:-3000}:3000"]
     depends_on: [api]
   superset-init:
     <<: *superset
@@ -73,7 +76,7 @@ services:
       migrate: { condition: service_completed_successfully }
   superset:
     <<: *superset
-    ports: ["${BIND_ADDR:-127.0.0.1}:8088:8088"]
+    ports: ["${BIND_ADDR:-127.0.0.1}:${SUPERSET_PORT:-8088}:8088"]
     restart: unless-stopped
     depends_on:
       superset-init: { condition: service_completed_successfully }
