@@ -1,11 +1,10 @@
 name: powerbridge
 # PostgreSQL is external: DATABASE_URL, SUPERSET_METADATA_URL and REPORTING_DATABASE_URI come from .env.
 # A database on this same machine is reachable from containers as host.docker.internal.
+# Each image is built once (by migrate / superset-init); other services reuse it.
 x-app: &app
-  build:
-    context: .
-    dockerfile: infra/docker/Dockerfile
   image: powerbridge-app
+  pull_policy: never
   env_file: .env
   environment: &app-env
     # Container ports are fixed; choose host ports with API_PORT / WEB_PORT / SUPERSET_PORT.
@@ -18,8 +17,8 @@ x-app: &app
   init: true
   restart: unless-stopped
 x-superset: &superset
-  build: ./infra/superset
   image: powerbridge-superset
+  pull_policy: never
   env_file: .env
   environment: &superset-env
     SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
@@ -37,6 +36,10 @@ services:
       retries: 20
   migrate:
     <<: *app
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile
+    pull_policy: build
     restart: "no"
     command: ["pnpm", "--filter", "@platform/api", "migration:run:prod"]
   seed:
@@ -71,6 +74,8 @@ services:
     depends_on: [api]
   superset-init:
     <<: *superset
+    build: ./infra/superset
+    pull_policy: build
     command: ["/bin/sh", "/app/bootstrap/init.sh"]
     depends_on:
       migrate: { condition: service_completed_successfully }

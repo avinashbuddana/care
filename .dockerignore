@@ -5,3 +5,10 @@ node_modules
 .env
 .git
 var
+**/coverage
+**/test-results
+**/playwright-report
+**/*.tsbuildinfo
+**/__pycache__
+samples
+docs
