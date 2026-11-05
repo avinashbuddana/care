@@ -12,6 +12,16 @@ import { AuthService } from '../../modules/auth/auth.service';
 import { loadEnvironment } from '../../config/environment';
 export const Public = () => SetMetadata('public', true);
 export const Allowed = (...roles: Role[]) => SetMetadata('roles', roles);
+/** Page served by our own web app under another hostname (e.g. server name instead of localhost). */
+export function sameHost(origin: string, req: Pick<Request, 'get'>): boolean {
+  // Next.js rewrites set x-forwarded-host to the address the browser used.
+  const host = req.get('x-forwarded-host') ?? req.get('host');
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
 @Injectable()
 export class AccessGuard implements CanActivate {
   constructor(
@@ -22,7 +32,7 @@ export class AccessGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<Request>();
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
       const origin = req.get('origin');
-      if (origin && origin !== loadEnvironment().WEB_ORIGIN)
+      if (origin && origin !== loadEnvironment().WEB_ORIGIN && !sameHost(origin, req))
         throw new ForbiddenException('Origin not allowed');
       if (req.get('sec-fetch-site') === 'cross-site')
         throw new ForbiddenException('Cross-site request rejected');

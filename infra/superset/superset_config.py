@@ -17,4 +17,5 @@ PREVENT_UNSAFE_DB_CONNECTIONS = True
 CACHE_CONFIG = {"CACHE_TYPE": "SimpleCache", "CACHE_DEFAULT_TIMEOUT": 300}
 DATA_CACHE_CONFIG = {"CACHE_TYPE": "SimpleCache", "CACHE_DEFAULT_TIMEOUT": 300}
 TALISMAN_ENABLED = True
-TALISMAN_CONFIG = {"force_https": False, "content_security_policy": {"default-src": ["'self'"], "img-src": ["'self'", "data:", "blob:"], "script-src": ["'self'", "'strict-dynamic'"], "style-src": ["'self'", "'unsafe-inline'"], "worker-src": ["'self'", "blob:"]}, "content_security_policy_nonce_in": ["script-src"]}
+# Talisman sets cookies Secure by default, overriding SESSION_COOKIE_SECURE; that breaks plain-HTTP logins.
+TALISMAN_CONFIG = {"force_https": False, "session_cookie_secure": SESSION_COOKIE_SECURE, "content_security_policy": {"default-src": ["'self'"], "img-src": ["'self'", "data:", "blob:"], "script-src": ["'self'", "'strict-dynamic'"], "style-src": ["'self'", "'unsafe-inline'"], "worker-src": ["'self'", "blob:"]}, "content_security_policy_nonce_in": ["script-src"]}

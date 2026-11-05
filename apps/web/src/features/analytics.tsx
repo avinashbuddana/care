@@ -60,7 +60,7 @@ export function Analytics() {
             <Notice danger>{message(query.error)}</Notice>
           ) : (
             <Button asChild>
-              <a href={query.data.url} target="_blank" rel="noopener noreferrer">
+              <a href={sameHost(query.data.url)} target="_blank" rel="noopener noreferrer">
                 Open Apache Superset
                 <ArrowUpRight className="size-4" />
               </a>
@@ -73,4 +73,11 @@ export function Analytics() {
       </Card>
     </>
   );
+}
+
+/** SUPERSET_URL defaults to localhost; when the app is opened via the server's name, use that name. */
+function sameHost(url: string): string {
+  const u = new URL(url);
+  if (['localhost', '127.0.0.1'].includes(u.hostname)) u.hostname = window.location.hostname;
+  return u.toString();
 }

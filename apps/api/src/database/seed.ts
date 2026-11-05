@@ -8,7 +8,7 @@ export async function seed(): Promise<void> {
     .object({
       DATABASE_URL: z.string().url(),
       ADMIN_EMAIL: z.string().email(),
-      ADMIN_PASSWORD: z.string().min(12).max(200),
+      ADMIN_PASSWORD: z.string().min(8).max(200),
     })
     .parse(process.env);
   const pool = new Pool({ connectionString: env.DATABASE_URL, max: 1 });
@@ -29,7 +29,7 @@ export async function seed(): Promise<void> {
 if (require.main === module)
   void seed().catch(() => {
     console.error(
-      'Seed failed. Check database and ADMIN_EMAIL / ADMIN_PASSWORD (minimum 12 characters).',
+      'Seed failed. Check database and ADMIN_EMAIL / ADMIN_PASSWORD (minimum 8 characters).',
     );
     process.exitCode = 1;
   });

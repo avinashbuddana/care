@@ -1,6 +1,7 @@
 name: powerbridge
-# PostgreSQL is external: DATABASE_URL, SUPERSET_METADATA_URL and REPORTING_DATABASE_URI come from .env.
-# A database on this same machine is reachable from containers as host.docker.internal.
+# PostgreSQL: DATABASE_URL, SUPERSET_METADATA_URL and REPORTING_DATABASE_URI come from .env.
+# COMPOSE_PROFILES=db in .env runs the bundled `postgres` service (URLs use host `postgres`).
+# For an external DB (RDS etc.) remove COMPOSE_PROFILES=db and point the three URLs at it.
 # Each image is built once (by migrate / superset-init); other services reuse it.
 x-app: &app
   image: powerbridge-app
@@ -22,8 +23,29 @@ x-superset: &superset
   env_file: .env
   environment: &superset-env
     SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+    SUPERSET_PORT: "8088" # container port; the host port comes from .env SUPERSET_PORT
   extra_hosts: ["host.docker.internal:host-gateway"]
 services:
+  postgres:
+    profiles: [db]
+    image: postgres:16.11-bookworm
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_DB: platform
+      REPORTING_PASSWORD: ${REPORTING_PASSWORD:-}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:-}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      # Runs only when the volume is first created: makes reporting_reader, superset_meta and the superset DB.
+      - ./infra/docker/postgres-init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+    ports: ["127.0.0.1:${POSTGRES_PORT:-8053}:5432"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform -d platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
   redis:
     image: redis:7.4.7-bookworm
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
@@ -42,6 +64,8 @@ services:
     pull_policy: build
     restart: "no"
     command: ["pnpm", "--filter", "@platform/api", "migration:run:prod"]
+    depends_on:
+      postgres: { condition: service_healthy, required: false }
   seed:
     # Creates ADMIN_EMAIL as admin if missing; safe to re-run.
     <<: *app
@@ -52,7 +76,7 @@ services:
   api:
     <<: *app
     command: ["pnpm", "--filter", "@platform/api", "start"]
-    ports: ["${BIND_ADDR:-127.0.0.1}:${API_PORT:-3001}:3001"]
+    ports: ["${BIND_ADDR:-127.0.0.1}:${API_PORT:-8051}:3001"]
     depends_on:
       seed: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -70,7 +94,7 @@ services:
       PORT: "3000"
       API_URL: http://api:3001
       NODE_ENV: production
-    ports: ["${BIND_ADDR:-127.0.0.1}:${WEB_PORT:-3000}:3000"]
+    ports: ["${BIND_ADDR:-127.0.0.1}:${WEB_PORT:-8050}:3000"]
     depends_on: [api]
   superset-init:
     <<: *superset
@@ -81,7 +105,7 @@ services:
       migrate: { condition: service_completed_successfully }
   superset:
     <<: *superset
-    ports: ["${BIND_ADDR:-127.0.0.1}:${SUPERSET_PORT:-8088}:8088"]
+    ports: ["${BIND_ADDR:-127.0.0.1}:${SUPERSET_PORT:-8052}:8088"]
     restart: unless-stopped
     depends_on:
       superset-init: { condition: service_completed_successfully }
@@ -100,5 +124,6 @@ services:
     depends_on:
       superset: { condition: service_healthy }
 volumes:
+  postgres:
   redis:
   uploads:
