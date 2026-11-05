@@ -107,6 +107,25 @@ export function Handoffs() {
           </Card>
           <Card>
             <CardHeader
+              title="Apply with one command"
+              description="Download the package, then run this from the project folder. It adds the files, registers the table and migration, and never overwrites existing files."
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void copy(applyCommands(handoff.id), 'apply')}
+                >
+                  {copied === 'apply' ? <Check className="size-4" /> : <Copy className="size-4" />}
+                  Copy
+                </Button>
+              }
+            />
+            <pre className="overflow-auto px-6 pb-6 text-xs leading-6">
+              {applyCommands(handoff.id)}
+            </pre>
+          </Card>
+          <Card>
+            <CardHeader
               title="Choose one migration approach"
               description="The package includes a reviewed migration alternative. Do not create two equivalent migrations."
             />
@@ -178,4 +197,13 @@ export function Handoffs() {
       )}
     </>
   );
+}
+
+function applyCommands(id: string): string {
+  return [
+    `node scripts/apply-handoff.mjs ~/Downloads/handoff-${id}.zip   # path of the downloaded package`,
+    'git diff                                   # review, then commit',
+    './start.sh                                 # deploy: the migration creates the table',
+    '# then in the app: Admin -> Datasets -> Check schema',
+  ].join('\n');
 }

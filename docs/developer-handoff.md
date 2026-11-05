@@ -4,6 +4,26 @@ Repository conventions are seeded from actual paths: `apps/api/src/database/enti
 
 After approval, generate the version-bound handoff. Review every create/modify artifact, destination path, complete new file or scoped insertion, and explanation. Copy Path/Copy Code and a downloadable ZIP are available. Existing files are represented as insertions, not invented full replacements.
 
+## Apply with one command
+
+Download the package (Developer handoffs → Download package), then from the repository root:
+
+```sh
+node scripts/apply-handoff.mjs ~/Downloads/handoff-<id>.zip   # or: pnpm handoff:apply <zip>
+git diff                                                       # review, then commit
+./start.sh                                                     # deploy: the migration creates the table
+```
+
+Then use **Admin → Datasets → Check schema**. The command uses the supplied migration (alternative 2 below):
+
+- creates the entity, contract and migration files; a different existing file is never overwritten,
+- adds the entity and migration to `data-source.ts` and the dataset to `registry.ts`,
+- saves the package README and `approved-schema.json` under `docs/handoffs/<table>/`.
+
+Running it twice changes nothing. It needs Node.js 18+ and no installed packages, so it also works on a server.
+
+## Manual alternative
+
 Choose exactly one migration alternative:
 
 1. Add/register the entity, then generate and review a migration locally using the actual DataSource.
@@ -15,4 +35,4 @@ Generated migrations (template version 2) include a per-table trigger. It advanc
 
 For alternative 1 run `pnpm --filter @platform/api migration:generate src/database/migrations/<Name>` from the repository root with `DATABASE_URL` pointing at a migrated development database. Generation does not create the trigger, reporting view or dataset registration; copy those statements from the proposed migration into the generated one.
 
-No assistant or API endpoint applies these artifacts. The developer uses the ordinary repository release process. After deployment, use schema verification to compare registration, migration history, columns, defaults, nullability, keys and references. Artifact template version and approved proposal version remain associated with the handoff.
+No assistant or API endpoint applies these artifacts; `apply-handoff.mjs` runs only when a developer runs it in their checkout. The developer uses the ordinary repository release process. After deployment, use schema verification to compare registration, migration history, columns, defaults, nullability, keys and references. Artifact template version and approved proposal version remain associated with the handoff.

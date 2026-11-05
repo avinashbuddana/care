@@ -108,7 +108,10 @@ export async function verifyContract(client: PoolClient, contract: Contract): Pr
     );
   if (!keys.some((k) => k.kind === 'p' && JSON.stringify(k.columns) === JSON.stringify(['id'])))
     errors.push('Internal id primary key is missing.');
-  if (!keys.some((k) => JSON.stringify(k.columns) === JSON.stringify(contract.uniqueKey)))
+  if (
+    contract.uniqueKey.length &&
+    !keys.some((k) => JSON.stringify(k.columns) === JSON.stringify(contract.uniqueKey))
+  )
     errors.push(`Unique key (${contract.uniqueKey.join(', ')}) is missing or differs.`);
   const fks = z
     .array(fkSchema)

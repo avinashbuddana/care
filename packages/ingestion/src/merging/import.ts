@@ -211,13 +211,16 @@ export async function runImport(pool: Pool, jobId: string, storageRoot: string):
       `CREATE TEMP TABLE ${typedName} ON COMMIT DROP AS SELECT _row,${contract.columns.map((c) => `${quote(c.name)}::${sqlType(c, contract)} AS ${quote(c.name)}`).join(',')} FROM ${stageName} WHERE _errors='[]'::jsonb`,
     );
     const keys = contract.uniqueKey.map(quote);
+    // No business key: append-only. Every valid row is inserted; nothing can be matched or updated.
+    const appendOnly = keys.length === 0;
     const keyJoin = keys.map((k) => `t.${k}=s.${k}`).join(' AND ');
     const duplicateRows = `SELECT _row FROM (SELECT _row,count(*) OVER(PARTITION BY ${keys.join(',')}) AS n FROM ${typedName}) d WHERE n>1`;
-    await client.query(
-      `UPDATE ${stageName} SET _errors=_errors||jsonb_build_array(jsonb_build_object('row',_row,'field',$1::text,'value',NULL,'reason','Duplicate key within CSV')) WHERE _row IN (${duplicateRows})`,
-      [contract.uniqueKey.join(',')],
-    );
-    if (job.mapping.mode === 'insert')
+    if (!appendOnly)
+      await client.query(
+        `UPDATE ${stageName} SET _errors=_errors||jsonb_build_array(jsonb_build_object('row',_row,'field',$1::text,'value',NULL,'reason','Duplicate key within CSV')) WHERE _row IN (${duplicateRows})`,
+        [contract.uniqueKey.join(',')],
+      );
+    if (!appendOnly && job.mapping.mode === 'insert')
       await client.query(
         `UPDATE ${stageName} SET _errors=_errors||jsonb_build_array(jsonb_build_object('row',_row,'field',$1::text,'value',NULL,'reason','Key already exists; use upsert')) WHERE _row IN (SELECT s._row FROM ${typedName} s JOIN ${target} t ON ${keyJoin})`,
         [contract.uniqueKey.join(',')],
@@ -252,13 +255,16 @@ export async function runImport(pool: Pool, jobId: string, storageRoot: string):
       // Repeat catalog check under table lock to close the verification/DDL race.
       const finalCheck = await verifyContract(client, contract);
       if (finalCheck.length) throw new Error(finalCheck.join('; '));
-      const existing = numberSchema.parse(
-        (
-          await client.query(
-            `SELECT count(*) AS count FROM ${typedName} s JOIN ${target} t ON ${keyJoin}`,
-          )
-        ).rows[0],
-      ).count;
+      const existing = appendOnly
+        ? 0
+        : numberSchema.parse(
+            (
+              await client.query(
+                `SELECT count(*) AS count FROM ${typedName} s JOIN ${target} t ON ${keyJoin}`,
+              )
+            ).rows[0],
+          ).count;
+      const upsert = !appendOnly && job.mapping.mode === 'upsert';
       const changed = contract.columns.filter((c) => !contract.uniqueKey.includes(c.name));
       const businessChanged = changed.filter(
         (c) => !(sourceFields as readonly string[]).includes(c.name),
@@ -271,25 +277,23 @@ export async function runImport(pool: Pool, jobId: string, storageRoot: string):
       const diff = changed.length
         ? changed.map((c) => `t.${quote(c.name)} IS DISTINCT FROM s.${quote(c.name)}`).join(' OR ')
         : 'FALSE';
-      counts.updated =
-        job.mapping.mode === 'upsert'
-          ? numberSchema.parse(
-              (
-                await client.query(
-                  `SELECT count(*) AS count FROM ${typedName} s JOIN ${target} t ON ${keyJoin} WHERE ${diff}`,
-                )
-              ).rows[0],
-            ).count
-          : 0;
+      counts.updated = upsert
+        ? numberSchema.parse(
+            (
+              await client.query(
+                `SELECT count(*) AS count FROM ${typedName} s JOIN ${target} t ON ${keyJoin} WHERE ${diff}`,
+              )
+            ).rows[0],
+          ).count
+        : 0;
       counts.unchanged = existing - counts.updated;
       counts.inserted = counts.received - existing;
       const columns = contract.columns.map((c) => quote(c.name));
-      const onConflict =
-        job.mapping.mode === 'upsert'
-          ? changed.length
-            ? `ON CONFLICT (${keys.join(',')}) DO UPDATE SET ${changed.map((c) => `${quote(c.name)}=EXCLUDED.${quote(c.name)}`).join(',')},updated_at=CASE WHEN ${timestampDiff} THEN clock_timestamp() ELSE t.updated_at END WHERE ${changed.map((c) => `t.${quote(c.name)} IS DISTINCT FROM EXCLUDED.${quote(c.name)}`).join(' OR ')}`
-            : `ON CONFLICT (${keys.join(',')}) DO NOTHING`
-          : '';
+      const onConflict = upsert
+        ? changed.length
+          ? `ON CONFLICT (${keys.join(',')}) DO UPDATE SET ${changed.map((c) => `${quote(c.name)}=EXCLUDED.${quote(c.name)}`).join(',')},updated_at=CASE WHEN ${timestampDiff} THEN clock_timestamp() ELSE t.updated_at END WHERE ${changed.map((c) => `t.${quote(c.name)} IS DISTINCT FROM EXCLUDED.${quote(c.name)}`).join(' OR ')}`
+          : `ON CONFLICT (${keys.join(',')}) DO NOTHING`
+        : '';
       await client.query(
         `INSERT INTO ${target} AS t (${columns.join(',')}) SELECT ${columns.join(',')} FROM ${typedName} WHERE TRUE ${onConflict}`,
       );

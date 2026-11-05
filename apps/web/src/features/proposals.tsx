@@ -68,6 +68,14 @@ export function Proposals() {
     queryKey: ['proposals'],
     queryFn: () => api('/proposals', z.array(proposalSchema)),
   });
+  const discard = useMutation({
+    mutationFn: (id: string) => api(`/proposals/${id}`, z.unknown(), { method: 'DELETE' }),
+    onSuccess: () => {
+      setNotice('Proposal deleted.');
+      void client.invalidateQueries();
+    },
+    onError: (error) => setNotice(message(error)),
+  });
   const [editing, setEditing] = useState<ProposalView | null>(null);
   const [creating, setCreating] = useState(false);
   const [contract, setContract] = useState<Contract>(blank);
@@ -384,10 +392,27 @@ export function Proposals() {
                         </Badge>
                       </td>
                       <td className="text-xs text-stone-500">{date(p.createdAt)}</td>
-                      <td>
+                      <td className="flex justify-end gap-2">
                         <Button variant="outline" size="sm" onClick={() => open(p)}>
                           Review
                         </Button>
+                        {p.status !== 'ready' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={discard.isPending}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Delete proposal "${p.name}" (app.${p.contract.table})? This cannot be undone.`,
+                                )
+                              )
+                                discard.mutate(p.id);
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   ))}

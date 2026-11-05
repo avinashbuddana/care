@@ -19,7 +19,7 @@ import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import { z } from 'zod';
 import { artifactSchema, contractSchema, conventionsSchema } from '@platform/contracts';
-import { verifyContract } from '@platform/ingestion';
+import { quote, runImport, verifyContract } from '@platform/ingestion';
 import { hashPassword } from '../src/modules/auth/password';
 import { generateArtifacts } from '../src/modules/developer-handoff/templates';
 
@@ -532,6 +532,67 @@ suite('PostgreSQL API safety boundaries', () => {
       .expect(201);
     expect(fake.last?.headers.authorization).toBe(`Bearer ${apiKey}`);
     expect(logs.join('')).not.toContain(apiKey);
+  });
+
+  it('imports into a table without a unique key by appending every row', async () => {
+    const table = `nokey_${randomUUID().slice(0, 8)}`;
+    const contract = contractSchema.parse({
+      version: 1,
+      table,
+      columns: [
+        { name: 'name', source: 'Name', type: 'text', nullable: false },
+        { name: 'note', source: 'Note', type: 'text', nullable: true },
+      ],
+      uniqueKey: [],
+    });
+    // Same table shape the generated migration creates: no UNIQUE constraint.
+    await pool.query(
+      `CREATE TABLE app.${quote(table)}(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),name text NOT NULL,note text)`,
+    );
+    const dataset = randomUUID();
+    const upload = randomUUID();
+    try {
+      await pool.query(
+        "INSERT INTO platform.datasets(id,name,status,contract) VALUES($1,'No key','ready',$2)",
+        [dataset, JSON.stringify(contract)],
+      );
+      // The same name twice in one file is allowed without a key.
+      await writeFile(join(storage, `${upload}.csv`), 'Name,Note\na.png,x\na.png,y\nb.png,\n');
+      await pool.query(
+        'INSERT INTO platform.uploads(id,original_name,storage_key,bytes,uploaded_by) VALUES($1,$2,$3,0,$4)',
+        [upload, 'nokey.csv', `${upload}.csv`, userId],
+      );
+      for (const mode of ['upsert', 'insert']) {
+        const job = randomUUID();
+        await pool.query(
+          "INSERT INTO platform.import_jobs(id,dataset_id,upload_id,status,mapping,mapping_version,contract,created_by) VALUES($1,$2,$3,'queued_publish',$4,1,$5,$6)",
+          [
+            job,
+            dataset,
+            upload,
+            JSON.stringify({ columns: { name: 'Name', note: 'Note' }, mode, emptyAsNull: true }),
+            JSON.stringify(contract),
+            userId,
+          ],
+        );
+        await runImport(pool, job, storage);
+        const result = z
+          .object({ status: z.string(), counts: z.object({ inserted: z.number() }) })
+          .parse(
+            (await pool.query('SELECT status,counts FROM platform.import_jobs WHERE id=$1', [job]))
+              .rows[0],
+          );
+        expect(result).toMatchObject({ status: 'completed', counts: { inserted: 3 } });
+      }
+      // Re-importing the same file appends again: 3 rows twice.
+      const rows = await pool.query(`SELECT count(*)::int AS n FROM app.${quote(table)}`);
+      expect(rows.rows[0]).toEqual({ n: 6 });
+    } finally {
+      await pool.query('DELETE FROM platform.import_jobs WHERE dataset_id=$1', [dataset]);
+      await pool.query('DELETE FROM platform.uploads WHERE id=$1', [upload]);
+      await pool.query('DELETE FROM platform.datasets WHERE id=$1', [dataset]);
+      await pool.query(`DROP TABLE app.${quote(table)}`);
+    }
   });
 
   it('verifies the deployed Departments dataset, reports upload mismatches and analyses references by value', async () => {

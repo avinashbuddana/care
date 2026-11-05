@@ -44,6 +44,23 @@ describe('trusted developer handoff templates', () => {
     expect(readme).toContain('Choose ONE migration alternative');
     expect(readme).toContain('not applied or verified');
   });
+  it('generates no unique constraint when the contract has no unique key', () => {
+    const artifacts = generateArtifacts(
+      contractSchema.parse({ ...contract, uniqueKey: [] }),
+      conventionsSchema.parse({}),
+      '10000000-0000-4000-8000-000000000003',
+      1760000002000,
+    );
+    const code = artifacts.map((a) => a.content).join('\n');
+    expect(code).not.toMatch(/UNIQUE \(|@Unique|, Unique \}/);
+    for (const a of artifacts.filter((a) => a.action === 'create' && a.path.endsWith('.ts')))
+      expect(
+        ts.transpileModule(a.content, {
+          reportDiagnostics: true,
+          compilerOptions: { experimentalDecorators: true },
+        }).diagnostics,
+      ).toEqual([]);
+  });
   it('rejects path traversal and untrusted SQL identifiers', () => {
     expect(() => conventionsSchema.parse({ entityDirectory: '../outside' })).toThrow();
     expect(() =>

@@ -50,7 +50,8 @@ export const contractSchema = z
     version: z.number().int().positive(),
     table: identifier,
     columns: z.array(columnSchema).min(1).max(150),
-    uniqueKey: z.array(identifier).min(1).max(8),
+    /** Empty = no business key: imports only append rows (no duplicate check, no upsert). */
+    uniqueKey: z.array(identifier).max(8),
     references: z.array(referenceSchema).max(30).default([]),
     reportingColumns: z.array(identifier).default([]),
   })

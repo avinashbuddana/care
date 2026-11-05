@@ -47,7 +47,7 @@ export function ContractEditor({
           />
         </label>
         <label>
-          Unique business key (comma separated)
+          Unique business key (comma separated, optional; empty = append-only imports)
           <Input
             disabled={disabled}
             value={keyText}

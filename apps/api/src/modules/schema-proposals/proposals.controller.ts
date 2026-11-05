@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Req,
@@ -67,15 +68,64 @@ export class ProposalsController {
   ) {}
   @Get() async list(): Promise<unknown> {
     return (
-      await this.db.query('SELECT * FROM platform.schema_proposals ORDER BY created_at DESC')
+      await this.db.query(
+        "SELECT * FROM platform.schema_proposals WHERE status<>'discarded' ORDER BY created_at DESC",
+      )
     ).map(present);
   }
   @Get(':id') async get(@Param('id') raw: string): Promise<unknown> {
-    const rows = await this.db.query('SELECT * FROM platform.schema_proposals WHERE id=$1', [
-      uuid(raw),
-    ]);
+    const rows = await this.db.query(
+      "SELECT * FROM platform.schema_proposals WHERE id=$1 AND status<>'discarded'",
+      [uuid(raw)],
+    );
     if (!rows[0]) throw new NotFoundException();
     return present(rows[0]);
+  }
+  /**
+   * Discards a proposal that was never deployed. Versions stay in the database (they are immutable
+   * audit records); the proposal disappears from lists and its pending dataset entry is removed.
+   */
+  @Delete(':id') async remove(@Param('id') raw: string, @Req() req: Request): Promise<unknown> {
+    const id = uuid(raw);
+    const client = await this.db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        "SELECT * FROM platform.schema_proposals WHERE id=$1 AND status<>'discarded' FOR UPDATE",
+        [id],
+      );
+      if (!result.rows[0]) throw new NotFoundException();
+      const p = rowSchema.parse(result.rows[0]);
+      const deployed = await client.query<{ exists: boolean }>(
+        "SELECT to_regclass(format('app.%I',$1::text)) IS NOT NULL AS exists",
+        [p.contract.table],
+      );
+      if (p.status === 'ready' || deployed.rows[0]?.exists)
+        throw new BadRequestException(
+          `Table app.${p.contract.table} is already deployed. Remove it with a reviewed migration before deleting this proposal.`,
+        );
+      const used = await client.query(
+        'SELECT 1 FROM platform.datasets d WHERE d.proposal_id=$1 AND (EXISTS (SELECT 1 FROM platform.import_jobs j WHERE j.dataset_id=d.id) OR EXISTS (SELECT 1 FROM platform.mapping_versions m WHERE m.dataset_id=d.id))',
+        [id],
+      );
+      if (used.rows.length)
+        throw new BadRequestException('This proposal has imports and cannot be deleted.');
+      await client.query('DELETE FROM platform.datasets WHERE proposal_id=$1', [id]);
+      await client.query("UPDATE platform.schema_proposals SET status='discarded' WHERE id=$1", [
+        id,
+      ]);
+      await client.query('COMMIT');
+      await this.audit.write(requestUser(req).id, 'proposal.discarded', id, {
+        name: p.name,
+        table: p.contract.table,
+      });
+      return { ok: true };
+    } catch (error: unknown) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
   @Post() async create(@Body() input: unknown, @Req() req: Request): Promise<unknown> {
     const value = parse(createSchema, input);
@@ -307,7 +357,9 @@ export class HandoffsController {
   constructor(private readonly db: Database) {}
   @Get() async list(): Promise<unknown> {
     return (
-      await this.db.query('SELECT * FROM platform.developer_handoffs ORDER BY created_at DESC')
+      await this.db.query(
+        "SELECT h.* FROM platform.developer_handoffs h JOIN platform.schema_proposals p ON p.id=h.proposal_id WHERE p.status<>'discarded' ORDER BY h.created_at DESC",
+      )
     ).map(presentHandoff);
   }
   @Get(':id') async get(@Param('id') raw: string): Promise<unknown> {

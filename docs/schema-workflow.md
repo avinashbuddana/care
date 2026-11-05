@@ -4,6 +4,8 @@ A new CSV may be uploaded and profiled before business tables exist. Inspect sam
 
 Administrators create/edit a proposal, including a non-null unique source key. Every version is immutable in PostgreSQL. A change creates a new version. Reserved internal fields (`id`, `created_at`, `updated_at`) cannot be mapped from CSV. Source metadata can be represented by separate explicitly approved columns.
 
+A proposal created by mistake (wrong name or table) can be deleted from the proposal list until its table is deployed. Its versions stay in the audit history; deleting a deployed table needs a reviewed migration.
+
 Approve a version, then generate its handoff. Approval updates platform state only. Downloaded artifacts are proposed, not applied. A developer commits reviewed code, registers entity/contract/migration, builds and runs the release migration gate. Check Schema Availability compares deployed registration and approved contract with the actual catalog before activating import. Failed verification remains visible. A differing deployed contract needs reconciliation; a frontend checkbox cannot activate it.
 
 **Relationships → Analyze a reference** gives evidence before an admin adds a reference to a proposal:

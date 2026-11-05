@@ -234,9 +234,18 @@ export function Imports() {
             {dataset && (
               <>
                 <p className="text-xs text-stone-500">
-                  Destination: <code>app.{dataset.contract.table}</code> · Unique key:{' '}
-                  <code>{dataset.contract.uniqueKey.join(', ')}</code>. This deployed contract
-                  defines the upsert key.
+                  Destination: <code>app.{dataset.contract.table}</code> ·{' '}
+                  {dataset.contract.uniqueKey.length ? (
+                    <>
+                      Unique key: <code>{dataset.contract.uniqueKey.join(', ')}</code>. This
+                      deployed contract defines the upsert key.
+                    </>
+                  ) : (
+                    <>
+                      No unique key: every import <strong>appends</strong> all rows (the import mode
+                      does not apply). Re-importing the same file duplicates its rows.
+                    </>
+                  )}
                 </p>
                 <div className="grid gap-4 md:grid-cols-2">
                   <label>
