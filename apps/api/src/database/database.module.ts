@@ -11,6 +11,7 @@ export class Database implements OnModuleDestroy {
       connectionString: env.DATABASE_URL,
       max: env.DB_POOL_MAX,
       statement_timeout: 30000,
+      connectionTimeoutMillis: 10000,
       idleTimeoutMillis: 30000,
     });
   }

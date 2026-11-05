@@ -16,5 +16,5 @@ export const dataSource = new DataSource({
   synchronize: false,
   migrationsRun: false,
   migrationsTableName: 'typeorm_migrations',
-  extra: { max: 3, statement_timeout: 30000 },
+  extra: { max: 3, statement_timeout: 30000, connectionTimeoutMillis: 10000 },
 });

@@ -11,7 +11,11 @@ export async function seed(): Promise<void> {
       ADMIN_PASSWORD: z.string().min(8).max(200),
     })
     .parse(process.env);
-  const pool = new Pool({ connectionString: env.DATABASE_URL, max: 1 });
+  const pool = new Pool({
+    connectionString: env.DATABASE_URL,
+    max: 1,
+    connectionTimeoutMillis: 10000,
+  });
   try {
     await pool.query(
       "INSERT INTO platform.users(email,password_hash,role) VALUES($1,$2,'admin') ON CONFLICT(email) DO NOTHING",

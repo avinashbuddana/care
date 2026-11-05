@@ -13,6 +13,7 @@ export class Database extends Pool implements OnModuleDestroy {
       connectionString: config.DATABASE_URL,
       max: config.WORKER_POOL_MAX,
       statement_timeout: config.QUERY_TIMEOUT_MS,
+      connectionTimeoutMillis: 10000,
       application_name: 'powerbridge-worker',
     });
   }
