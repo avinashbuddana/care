@@ -28,7 +28,11 @@ x-superset: &superset
 services:
   postgres:
     profiles: [db]
-    image: postgres:16.11-bookworm
+    image: powerbridge-postgres
+    build:
+      context: infra/docker
+      dockerfile: postgres.Dockerfile
+    pull_policy: build
     environment:
       POSTGRES_USER: platform
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
@@ -36,9 +40,9 @@ services:
       REPORTING_PASSWORD: ${REPORTING_PASSWORD:-}
       SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:-}
     volumes:
+      # The image's init script runs only when this volume is first created:
+      # makes reporting_reader, superset_meta and the superset DB.
       - postgres:/var/lib/postgresql/data
-      # Runs only when the volume is first created: makes reporting_reader, superset_meta and the superset DB.
-      - ./infra/docker/postgres-init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
     ports: ["127.0.0.1:${POSTGRES_PORT:-8053}:5432"]
     restart: unless-stopped
     healthcheck:
