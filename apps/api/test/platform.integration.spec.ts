@@ -496,6 +496,44 @@ suite('PostgreSQL API safety boundaries', () => {
     expect(logs.join('')).not.toContain(settings.accessKeyId);
   });
 
+  it('sends a saved Bedrock API key as a bearer token and never returns it', async () => {
+    const apiKey = 'bedrock-api-key-example-value';
+    const settings = {
+      enabled: true,
+      region: 'us-east-1',
+      authMode: 'apiKey',
+      apiKey,
+      inferenceProfileArn: 'arn:aws:bedrock:us-east-1:000000000000:inference-profile/example',
+      timeoutMs: 5000,
+      retries: 0,
+      maxTokens: 100,
+      shareSamples: false,
+      maskSamples: true,
+    };
+    const saved = await request(http)
+      .put('/api/settings/bedrock')
+      .set('Cookie', cookie)
+      .send(settings)
+      .expect(200);
+    expect(saved.text).not.toContain(apiKey);
+    // Blank key on a later save keeps the stored one.
+    const { apiKey: omitted, ...withoutKey } = settings;
+    void omitted;
+    await request(http)
+      .put('/api/settings/bedrock')
+      .set('Cookie', cookie)
+      .send(withoutKey)
+      .expect(200);
+    fake.reply = { status: 200, body: converseBody('READY') };
+    await request(http)
+      .post('/api/settings/bedrock/test')
+      .set('Cookie', cookie)
+      .send({})
+      .expect(201);
+    expect(fake.last?.headers.authorization).toBe(`Bearer ${apiKey}`);
+    expect(logs.join('')).not.toContain(apiKey);
+  });
+
   it('verifies the deployed Departments dataset, reports upload mismatches and analyses references by value', async () => {
     const verified = await request(http)
       .post(`/api/datasets/${DEPARTMENTS}/verify`)

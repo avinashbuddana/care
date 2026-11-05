@@ -172,7 +172,7 @@ export function RepositorySettings() {
 const publicSettingsSchema = z.object({
   enabled: z.boolean(),
   region: z.string(),
-  authMode: z.enum(['chain', 'explicit']),
+  authMode: z.enum(['chain', 'explicit', 'apiKey']),
   inferenceProfileArn: z.string(),
   timeoutMs: z.number(),
   retries: z.number(),
@@ -215,12 +215,14 @@ export function BedrockSettingsPage() {
       if (!clean.accessKeyId) delete clean.accessKeyId;
       if (!clean.secretAccessKey) delete clean.secretAccessKey;
       if (!clean.sessionToken) delete clean.sessionToken;
+      if (!clean.apiKey) delete clean.apiKey;
       return put('/settings/bedrock', publicSettingsSchema, clean);
     },
     onSuccess: () => {
       form.resetField('accessKeyId');
       form.resetField('secretAccessKey');
       form.resetField('sessionToken');
+      form.resetField('apiKey');
       void query.refetch();
     },
   });
@@ -265,6 +267,7 @@ export function BedrockSettingsPage() {
                   <label>
                     Authentication mode
                     <Select {...form.register('authMode')}>
+                      <option value="apiKey">Bedrock API key</option>
                       <option value="chain">Default credential chain / IAM role</option>
                       <option value="explicit">Explicit encrypted credentials</option>
                     </Select>
@@ -277,6 +280,26 @@ export function BedrockSettingsPage() {
                     {...form.register('inferenceProfileArn')}
                   />
                 </label>
+                {authMode === 'apiKey' && (
+                  <div className="space-y-4 rounded-lg border border-stone-200 bg-stone-50 p-5">
+                    <p className="flex items-center gap-2 text-xs text-stone-500">
+                      <LockKeyhole className="size-4" />
+                      {query.data.hasCredentials
+                        ? 'An encrypted API key is saved. Leave blank to keep it.'
+                        : 'No API key saved.'}{' '}
+                      Saved keys are never returned.
+                    </p>
+                    <label className="block">
+                      Bedrock API key
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder="Created in the Bedrock console under API keys"
+                        {...form.register('apiKey')}
+                      />
+                    </label>
+                  </div>
+                )}
                 {authMode === 'explicit' && (
                   <div className="space-y-4 rounded-lg border border-stone-200 bg-stone-50 p-5">
                     <p className="flex items-center gap-2 text-xs text-stone-500">

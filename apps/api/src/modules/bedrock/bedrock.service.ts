@@ -21,11 +21,14 @@ export const defaultBedrock: BedrockSettings = {
   shareSamples: false,
   maskSamples: true,
 };
-const secretsSchema = z.object({
-  accessKeyId: z.string().min(1),
-  secretAccessKey: z.string().min(1),
-  sessionToken: z.string().optional(),
-});
+const secretsSchema = z.union([
+  z.object({ apiKey: z.string().min(1) }),
+  z.object({
+    accessKeyId: z.string().min(1),
+    secretAccessKey: z.string().min(1),
+    sessionToken: z.string().optional(),
+  }),
+]);
 type Secrets = z.infer<typeof secretsSchema>;
 @Injectable()
 export class BedrockService {
@@ -39,26 +42,32 @@ export class BedrockService {
   }
   async save(input: unknown): Promise<BedrockSettings & { hasCredentials: boolean }> {
     const value = bedrockSettingsSchema.parse(input);
-    const { accessKeyId, secretAccessKey, sessionToken, ...publicSettings } = value;
+    const { accessKeyId, secretAccessKey, sessionToken, apiKey, ...publicSettings } = value;
     let secret: string | null = null;
-    if (value.authMode === 'explicit') {
-      if (accessKeyId && secretAccessKey)
-        secret = this.encrypt(
-          secretsSchema.parse({
+    if (value.authMode !== 'chain') {
+      const wantsApiKey = value.authMode === 'apiKey';
+      const fresh = wantsApiKey
+        ? apiKey && { apiKey }
+        : accessKeyId &&
+          secretAccessKey && {
             accessKeyId,
             secretAccessKey,
             ...(sessionToken ? { sessionToken } : {}),
-          }),
-        );
+          };
+      if (fresh) secret = this.encrypt(secretsSchema.parse(fresh));
       else {
+        // Blank fields keep the saved secret, but only if it is the same kind.
         const existing = await this.db.query(
           "SELECT secret FROM platform.settings WHERE key='bedrock'",
         );
-        if (typeof existing[0]?.secret !== 'string')
+        const kept: unknown = existing[0]?.secret;
+        if (typeof kept !== 'string' || 'apiKey' in this.decrypt(kept) !== wantsApiKey)
           throw new BadRequestException(
-            'Explicit authentication requires both access key ID and secret access key',
+            wantsApiKey
+              ? 'API key authentication requires a Bedrock API key'
+              : 'Explicit authentication requires both access key ID and secret access key',
           );
-        secret = existing[0].secret;
+        secret = kept;
       }
     }
     await this.db.query(
@@ -146,7 +155,7 @@ export class BedrockService {
     if (!settings.enabled)
       throw new BadRequestException('Bedrock is disabled. Enable it or create a manual proposal.');
     let credentials: Secrets | undefined;
-    if (settings.authMode === 'explicit') {
+    if (settings.authMode !== 'chain') {
       const rows = await this.db.query("SELECT secret FROM platform.settings WHERE key='bedrock'");
       if (typeof rows[0]?.secret !== 'string')
         throw new BadRequestException('No saved credentials');
@@ -155,15 +164,18 @@ export class BedrockService {
     const client = new BedrockRuntimeClient({
       region: settings.region,
       maxAttempts: settings.retries + 1,
-      ...(credentials
-        ? {
-            credentials: {
-              accessKeyId: credentials.accessKeyId,
-              secretAccessKey: credentials.secretAccessKey,
-              ...(credentials.sessionToken ? { sessionToken: credentials.sessionToken } : {}),
-            },
-          }
-        : {}),
+      ...(!credentials
+        ? {}
+        : 'apiKey' in credentials
+          ? // Bedrock API keys are bearer tokens instead of SigV4-signed credentials.
+            { token: { token: credentials.apiKey }, authSchemePreference: ['httpBearerAuth'] }
+          : {
+              credentials: {
+                accessKeyId: credentials.accessKeyId,
+                secretAccessKey: credentials.secretAccessKey,
+                ...(credentials.sessionToken ? { sessionToken: credentials.sessionToken } : {}),
+              },
+            }),
     });
     try {
       const response = await client.send(

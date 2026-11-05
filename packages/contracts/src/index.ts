@@ -174,7 +174,9 @@ export const bedrockSettingsSchema = z
   .object({
     enabled: z.boolean(),
     region: z.string().regex(/^[a-z]{2}-[a-z]+-\d$/),
-    authMode: z.enum(['chain', 'explicit']),
+    authMode: z.enum(['chain', 'explicit', 'apiKey']),
+    /** Amazon Bedrock API key (bearer token), used when authMode is 'apiKey'. */
+    apiKey: z.string().max(5000).optional(),
     accessKeyId: z.string().max(200).optional(),
     secretAccessKey: z.string().max(500).optional(),
     sessionToken: z.string().max(5000).optional(),
