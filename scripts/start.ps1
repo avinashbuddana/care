@@ -2,6 +2,11 @@
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 if (-not (Test-Path .env)) {
+  docker volume inspect powerbridge_postgres *> $null
+  if ($LASTEXITCODE -eq 0) {
+    Write-Error 'No .env, but the database volume from an earlier run exists - new random passwords would not match it. Restore the old .env, or wipe the Docker data (database, redis, uploads): docker compose down -v'
+    exit 1
+  }
   # First run: .env from the template, with random DB passwords and secret keys.
   function Rnd { $b = New-Object byte[] 24; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $_.ToString('x2') }) }
   $t = Get-Content .env.example -Raw

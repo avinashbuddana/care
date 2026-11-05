@@ -3,6 +3,11 @@
 set -eu
 cd "$(dirname "$0")/.."
 if [ ! -f .env ]; then
+  if docker volume inspect powerbridge_postgres >/dev/null 2>&1; then
+    echo "No .env, but the database volume from an earlier run exists - new random passwords would not match it." >&2
+    echo "Restore the old .env, or wipe the Docker data (database, redis, uploads): docker compose down -v" >&2
+    exit 1
+  fi
   # First run: .env from the template, with random DB passwords and secret keys.
   rnd() { od -An -N24 -tx1 /dev/urandom | tr -d ' \n'; }
   sed -e "s/CHANGE_ME_app/$(rnd)/g" -e "s/CHANGE_ME_reporting/$(rnd)/g" -e "s/CHANGE_ME_superset/$(rnd)/g" \
