@@ -1,5 +1,6 @@
 #!/bin/sh
-# Stop and remove containers. Uploads and redis volumes are kept; your external Postgres is untouched.
+# Stop and remove the app containers. Postgres keeps running (and all volumes are kept).
+# To stop Postgres as well: docker compose down
 set -eu
 cd "$(dirname "$0")/.."
-docker compose down "$@"
+docker compose rm --stop --force $(docker compose config --services | grep -vx postgres)

@@ -1,3 +1,5 @@
-# Windows: stop and remove containers. Uploads and redis volumes are kept; your Postgres is untouched.
+# Windows: stop and remove the app containers. Postgres keeps running (and all volumes are kept).
+# To stop Postgres as well: docker compose down
 Set-Location (Join-Path $PSScriptRoot '..')
-docker compose down @args
+$services = docker compose config --services | Where-Object { $_ -ne 'postgres' }
+docker compose rm --stop --force @services
